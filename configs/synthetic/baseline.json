@@ -1,0 +1,41 @@
+{
+  "seed": 42,
+  "device": "cuda",
+  "sample_rate": 16000,
+  "features": {
+    "n_fft": 512,
+    "hop_length": 160,
+    "win_length": 400,
+    "n_mels": 80,
+    "f_min": 0.0,
+    "f_max": 8000.0,
+    "log_epsilon": 1e-5
+  },
+  "train": {
+    "epochs": 10,
+    "batch_size": 8,
+    "learning_rate": 0.0003,
+    "num_workers": 0,
+    "grad_clip": 1.0,
+    "log_every": 20,
+    "save_every": 1
+  },
+  "data": {
+    "dataset_type": "synthetic",
+    "train_size": 2000,
+    "valid_size": 200,
+    "signal_length": 16000,
+    "enrollment_length": 8000,
+    "inference_signal_length": 48000,
+    "inference_enrollment_length": 16000
+  },
+  "model": {
+    "base_channels": 48,
+    "speaker_dim": 128,
+    "time_dim": 128
+  },
+  "sampling": {
+    "steps": 48
+  },
+  "output_dir": "outputs"
+}
