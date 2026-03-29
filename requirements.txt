@@ -3,3 +3,4 @@ numpy>=1.26
 soundfile>=0.12
 matplotlib>=3.8
 pesq>=0.0.4
+tqdm>=4.66

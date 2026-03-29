@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "device": "cuda",
+  "device": 0,
   "sample_rate": 16000,
   "features": {
     "n_fft": 512,
@@ -12,7 +12,7 @@
     "log_epsilon": 1e-5
   },
   "train": {
-    "epochs": 30,
+    "epochs": 10,
     "batch_size": 4,
     "learning_rate": 0.0003,
     "num_workers": 0,
@@ -46,5 +46,5 @@
   "sampling": {
     "steps": 48
   },
-  "output_dir": "outputs_librimix"
+  "output_dir": "outputs/librimix/mel"
 }

@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "device": "cuda",
+  "device": 0,
   "sample_rate": 16000,
   "features": {
     "n_fft": 512,

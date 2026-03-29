@@ -95,6 +95,29 @@ def save_vector_field_panel(
     plt.close(fig)
 
 
+def save_waveform_panel(
+    waveforms: dict[str, torch.Tensor],
+    output_path: str | Path,
+    title: str,
+) -> None:
+    output_path = _ensure_parent(output_path)
+    items = list(waveforms.items())
+    fig, axes = plt.subplots(len(items), 1, figsize=(12, 2.4 * len(items)), squeeze=False, sharex=True)
+
+    for axis, (name, tensor) in zip(axes[:, 0], items):
+        waveform = tensor.detach().cpu().float().numpy()
+        axis.plot(np.arange(len(waveform)), waveform, linewidth=1.0)
+        axis.set_title(name)
+        axis.set_ylabel("Amp")
+        axis.grid(alpha=0.25)
+
+    axes[-1, 0].set_xlabel("Sample")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
 def save_flow_trajectory_plot(
     flow_history: Iterable[torch.Tensor],
     output_path: str | Path,

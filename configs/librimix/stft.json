@@ -1,0 +1,47 @@
+{
+  "seed": 42,
+  "device": 0,
+  "sample_rate": 16000,
+  "stft": {
+    "n_fft": 512,
+    "hop_length": 160,
+    "win_length": 400
+  },
+  "train": {
+    "epochs": 10,
+    "batch_size": 4,
+    "learning_rate": 0.0003,
+    "num_workers": 0,
+    "grad_clip": 1.0,
+    "log_every": 20,
+    "save_every": 1
+  },
+  "data": {
+    "dataset_type": "librimix",
+    "train_csv": "LibriMix/metadata/Libri2Mix/libri2mix_train-clean-100.csv",
+    "valid_csv": "LibriMix/metadata/Libri2Mix/libri2mix_dev-clean.csv",
+    "test_csv": "LibriMix/metadata/Libri2Mix/libri2mix_test-clean.csv",
+    "librispeech_root": "LibriMix/storage_dir/LibriSpeech",
+    "wham_root": "LibriMix/storage_dir/wham_noise",
+    "mode": "min",
+    "mixture_type": "mix_both",
+    "segment_length": 48000,
+    "enrollment_length": 48000,
+    "train_target_source_strategy": "random",
+    "valid_target_source_strategy": "source_1",
+    "test_target_source_strategy": "source_1",
+    "train_max_items": null,
+    "valid_max_items": 256,
+    "test_max_items": 256
+  },
+  "model": {
+    "base_channels": 48,
+    "speaker_dim": 128,
+    "num_blocks": 6
+  },
+  "loss": {
+    "stft_l1_weight": 1.0,
+    "si_sdr_weight": 0.1
+  },
+  "output_dir": "outputs/librimix/stft"
+}

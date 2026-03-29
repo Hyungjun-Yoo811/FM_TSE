@@ -16,6 +16,7 @@ from src.fm_tse.data.pipeline import build_dataset
 from src.fm_tse.models.flow_matching import euler_sample
 from src.fm_tse.models.networks import FlowMatchingTSE
 from src.fm_tse.utils.config import load_config
+from src.fm_tse.utils.device import resolve_device
 from src.fm_tse.utils.metrics import (
     improvement,
     mel_frame_cosine_similarity,
@@ -27,14 +28,6 @@ from src.fm_tse.utils.metrics import (
     spectral_convergence,
 )
 from src.fm_tse.utils.visualization import save_flow_trajectory_plot, save_mel_panel
-
-
-def resolve_device(name: str) -> torch.device:
-    if name == "cuda" and not torch.cuda.is_available():
-        return torch.device("cpu")
-    return torch.device(name)
-
-
 def build_feature_extractor(config, device: torch.device) -> MelSpectrogramTransform:
     feature_cfg = config["features"]
     mel_config = MelSpectrogramConfig(

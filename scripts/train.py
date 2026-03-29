@@ -8,6 +8,7 @@ from typing import Dict
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,6 +19,7 @@ from src.fm_tse.data.pipeline import build_dataloader
 from src.fm_tse.models.flow_matching import euler_sample, sample_flow_matching_batch
 from src.fm_tse.models.networks import FlowMatchingTSE
 from src.fm_tse.utils.config import load_config
+from src.fm_tse.utils.device import resolve_device
 from src.fm_tse.utils.metrics import (
     improvement,
     mel_frame_cosine_similarity,
@@ -41,14 +43,6 @@ def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-
-def resolve_device(name: str) -> torch.device:
-    if name == "cuda" and not torch.cuda.is_available():
-        return torch.device("cpu")
-    return torch.device(name)
-
-
 def move_batch(batch: Dict[str, torch.Tensor], device: torch.device) -> Dict[str, torch.Tensor]:
     return {key: value.to(device) for key, value in batch.items()}
 
@@ -85,7 +79,13 @@ def run_validation(model, valid_loader, device, steps: int, feature_extractor, o
     pesq_batches = 0
 
     with torch.no_grad():
-        for batch_idx, batch in enumerate(valid_loader):
+        valid_bar = tqdm(
+            enumerate(valid_loader),
+            total=len(valid_loader),
+            desc=f"valid-mel epoch {epoch}",
+            leave=False,
+        )
+        for batch_idx, batch in valid_bar:
             batch = move_batch(batch, device)
             x_t, time, flow_target, mixture, enrollment, target = sample_flow_matching_batch(batch, feature_extractor)
             pred = model(x_t, time, mixture, enrollment)
@@ -116,6 +116,10 @@ def run_validation(model, valid_loader, device, steps: int, feature_extractor, o
                 pesq_total += torch.nanmean(pesq_value).item()
                 pesq_batches += 1
             batches += 1
+            valid_bar.set_postfix(
+                step=f"{batch_idx + 1}/{len(valid_loader)}",
+                flow_mse=f"{torch.mean((pred - flow_target) ** 2).item():.4f}",
+            )
 
             if batch_idx == 0:
                 plots_dir = output_dir / "plots"
@@ -199,6 +203,45 @@ def save_checkpoint(path: Path, model, optimizer, epoch: int, config: Dict) -> N
     )
 
 
+def save_training_state(
+    path: Path,
+    model,
+    optimizer,
+    epoch: int,
+    config: Dict,
+    history: Dict[str, list[float]],
+    global_step: int,
+    best_metrics: Dict[str, float],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch,
+            "config": config,
+            "history": history,
+            "global_step": global_step,
+            "best_metrics": best_metrics,
+        },
+        path,
+    )
+
+
+def load_training_state(path: Path, model, optimizer):
+    checkpoint = torch.load(path, map_location="cpu")
+    model.load_state_dict(checkpoint["model"])
+    if "optimizer" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+    return {
+        "epoch": checkpoint.get("epoch", 0),
+        "history": checkpoint.get("history"),
+        "global_step": checkpoint.get("global_step"),
+        "best_metrics": checkpoint.get("best_metrics"),
+        "config": checkpoint.get("config", {}),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="configs/librimix/baseline.json")
@@ -238,12 +281,37 @@ def main() -> None:
         "valid_pesq": [],
     }
 
+    latest_path = checkpoint_dir / "latest.pt"
+    best_path = checkpoint_dir / "best_si_sdr.pt"
+    start_epoch = 1
     global_step = 0
-    for epoch in range(1, config["train"]["epochs"] + 1):
+    best_metrics = {"si_sdr": float("-inf"), "epoch": 0}
+
+    if latest_path.exists():
+        state = load_training_state(latest_path, model, optimizer)
+        start_epoch = state["epoch"] + 1
+        if state["history"] is not None:
+            history = state["history"]
+        if state["global_step"] is not None:
+            global_step = state["global_step"]
+        if state["best_metrics"] is not None:
+            best_metrics = state["best_metrics"]
+        print(
+            f"[resume] loaded {latest_path} "
+            f"from epoch={state['epoch']} "
+            f"best_si_sdr={best_metrics.get('si_sdr', float('-inf')):.3f}"
+        )
+
+    for epoch in range(start_epoch, config["train"]["epochs"] + 1):
         model.train()
         running_loss = 0.0
-
-        for batch_idx, batch in enumerate(train_loader):
+        train_bar = tqdm(
+            enumerate(train_loader),
+            total=len(train_loader),
+            desc=f"train-mel epoch {epoch}/{config['train']['epochs']}",
+            leave=True,
+        )
+        for batch_idx, batch in train_bar:
             batch = move_batch(batch, device)
             x_t, time, flow_target, mixture, enrollment, target = sample_flow_matching_batch(batch, feature_extractor)
 
@@ -258,6 +326,10 @@ def main() -> None:
             running_loss += loss.item()
             history["train_flow_mse"].append(loss.item())
             global_step += 1
+            train_bar.set_postfix(
+                step=f"{batch_idx + 1}/{len(train_loader)}",
+                loss=f"{loss.item():.4f}",
+            )
 
             if global_step % config["train"]["log_every"] == 0:
                 avg_loss = running_loss / config["train"]["log_every"]
@@ -334,8 +406,29 @@ def main() -> None:
             f"pesq={metrics['pesq']:.3f}"
         )
 
-        latest_path = checkpoint_dir / "latest.pt"
-        save_checkpoint(latest_path, model, optimizer, epoch, config)
+        if metrics["si_sdr"] > best_metrics["si_sdr"]:
+            best_metrics = {"si_sdr": metrics["si_sdr"], "epoch": epoch}
+            save_training_state(
+                best_path,
+                model,
+                optimizer,
+                epoch,
+                config,
+                history,
+                global_step,
+                best_metrics,
+            )
+            print(f"[best] epoch={epoch} si_sdr={metrics['si_sdr']:.3f} saved={best_path}")
+        save_training_state(
+            latest_path,
+            model,
+            optimizer,
+            epoch,
+            config,
+            history,
+            global_step,
+            best_metrics,
+        )
         if epoch % config["train"]["save_every"] == 0:
             save_checkpoint(checkpoint_dir / f"epoch_{epoch}.pt", model, optimizer, epoch, config)
 
