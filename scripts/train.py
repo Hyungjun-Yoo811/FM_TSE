@@ -19,7 +19,7 @@ from src.fm_tse.data.pipeline import build_dataloader
 from src.fm_tse.models.flow_matching import euler_sample, sample_flow_matching_batch
 from src.fm_tse.models.networks import FlowMatchingTSE
 from src.fm_tse.utils.config import load_config
-from src.fm_tse.utils.device import resolve_device
+from src.fm_tse.utils.device import load_model_state, maybe_wrap_model, model_state_dict, resolve_device
 from src.fm_tse.utils.metrics import (
     improvement,
     mel_frame_cosine_similarity,
@@ -194,7 +194,7 @@ def save_checkpoint(path: Path, model, optimizer, epoch: int, config: Dict) -> N
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model": model.state_dict(),
+            "model": model_state_dict(model),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
             "config": config,
@@ -216,7 +216,7 @@ def save_training_state(
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model": model.state_dict(),
+            "model": model_state_dict(model),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
             "config": config,
@@ -230,7 +230,7 @@ def save_training_state(
 
 def load_training_state(path: Path, model, optimizer):
     checkpoint = torch.load(path, map_location="cpu")
-    model.load_state_dict(checkpoint["model"])
+    load_model_state(model, checkpoint["model"])
     if "optimizer" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer"])
     return {
@@ -249,17 +249,18 @@ def main() -> None:
 
     config = load_config(args.config)
     set_seed(config["seed"])
-    device = resolve_device(config["device"])
+    device, gpu_ids = resolve_device(config["device"])
     feature_extractor = build_feature_extractor(config, device)
 
     train_loader = build_dataloader(config, "train")
     valid_loader = build_dataloader(config, "valid")
-    model = FlowMatchingTSE(**config["model"]).to(device)
+    model = maybe_wrap_model(FlowMatchingTSE(**config["model"]), device, gpu_ids)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config["train"]["learning_rate"],
         weight_decay=1e-4,
     )
+    print(f"[device] using {device} gpu_ids={gpu_ids if gpu_ids else 'cpu'}")
 
     output_dir = Path(config["output_dir"])
     checkpoint_dir = output_dir / "checkpoints"

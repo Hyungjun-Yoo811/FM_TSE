@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "device": 0,
+  "device": [0, 1, 2, 3, 4, 5, 6, 7],
   "sample_rate": 16000,
   "stft": {
     "n_fft": 512,

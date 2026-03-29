@@ -18,7 +18,7 @@ from src.fm_tse.models.networks import FlowMatchingTSE
 from src.fm_tse.models.stft_tse import STFTMaskTSE
 from src.fm_tse.models.waveform_tse import WaveformTSE
 from src.fm_tse.utils.config import load_config
-from src.fm_tse.utils.device import resolve_device
+from src.fm_tse.utils.device import load_model_state, maybe_wrap_model, resolve_device
 from src.fm_tse.utils.metrics import pesq_score, si_sdr
 
 
@@ -63,8 +63,8 @@ def evaluate_mel(mel_config: dict, checkpoint_path: str, split: str, device: tor
     loader = build_dataloader(config, split)
     feature_extractor = build_feature_extractor(config, device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = FlowMatchingTSE(**checkpoint["config"]["model"]).to(device)
-    model.load_state_dict(checkpoint["model"])
+    model = maybe_wrap_model(FlowMatchingTSE(**checkpoint["config"]["model"]), device, [device.index] if device.type == "cuda" else [])
+    load_model_state(model, checkpoint["model"])
     model.eval()
 
     totals = {"si_sdr": 0.0, "pesq": 0.0}
@@ -99,8 +99,8 @@ def evaluate_waveform(config_path: str, checkpoint_path: str, split: str, device
     config = load_config(config_path)
     loader = build_dataloader(config, split)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = WaveformTSE(**checkpoint["config"]["model"]).to(device)
-    model.load_state_dict(checkpoint["model"])
+    model = maybe_wrap_model(WaveformTSE(**checkpoint["config"]["model"]), device, [device.index] if device.type == "cuda" else [])
+    load_model_state(model, checkpoint["model"])
     model.eval()
 
     totals = {"si_sdr": 0.0, "pesq": 0.0}
@@ -128,8 +128,8 @@ def evaluate_stft(config_path: str, checkpoint_path: str, split: str, device: to
     loader = build_dataloader(config, split)
     codec = STFTCodec(config, device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model = STFTMaskTSE(**checkpoint["config"]["model"]).to(device)
-    model.load_state_dict(checkpoint["model"])
+    model = maybe_wrap_model(STFTMaskTSE(**checkpoint["config"]["model"]), device, [device.index] if device.type == "cuda" else [])
+    load_model_state(model, checkpoint["model"])
     model.eval()
 
     totals = {"si_sdr": 0.0, "pesq": 0.0}
@@ -166,7 +166,7 @@ def main() -> None:
     args = parser.parse_args()
 
     waveform_config = load_config(args.waveform_config)
-    device = resolve_device(waveform_config["device"])
+    device, _ = resolve_device(waveform_config["device"])
 
     mel_metrics = evaluate_mel(args.mel_config, args.mel_checkpoint, args.split, device)
     waveform_metrics = evaluate_waveform(args.waveform_config, args.waveform_checkpoint, args.split, device)

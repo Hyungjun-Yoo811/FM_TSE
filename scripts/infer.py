@@ -16,7 +16,7 @@ from src.fm_tse.data.pipeline import build_dataset
 from src.fm_tse.models.flow_matching import euler_sample
 from src.fm_tse.models.networks import FlowMatchingTSE
 from src.fm_tse.utils.config import load_config
-from src.fm_tse.utils.device import resolve_device
+from src.fm_tse.utils.device import load_model_state, maybe_wrap_model, resolve_device
 from src.fm_tse.utils.metrics import (
     improvement,
     mel_frame_cosine_similarity,
@@ -52,13 +52,14 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    device = resolve_device(config["device"])
+    device, gpu_ids = resolve_device(config["device"])
     feature_extractor = build_feature_extractor(config, device)
 
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    model = FlowMatchingTSE(**checkpoint["config"]["model"]).to(device)
-    model.load_state_dict(checkpoint["model"])
+    model = maybe_wrap_model(FlowMatchingTSE(**checkpoint["config"]["model"]), device, gpu_ids)
+    load_model_state(model, checkpoint["model"])
     model.eval()
+    print(f"[device] using {device} gpu_ids={gpu_ids if gpu_ids else 'cpu'}")
 
     dataset = build_dataset(config, args.split, inference=True)
     batch = dataset[args.index]

@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.fm_tse.data.pipeline import build_dataloader
 from src.fm_tse.models.stft_tse import STFTMaskTSE
 from src.fm_tse.utils.config import load_config
-from src.fm_tse.utils.device import resolve_device
+from src.fm_tse.utils.device import load_model_state, maybe_wrap_model, model_state_dict, resolve_device
 from src.fm_tse.utils.metrics import improvement, pesq_score, si_sdr, si_snr, snr
 from src.fm_tse.utils.visualization import save_training_curves, save_waveform_panel
 
@@ -73,7 +73,7 @@ def save_training_state(path: Path, model, optimizer, epoch: int, config: Dict, 
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model": model.state_dict(),
+            "model": model_state_dict(model),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
             "config": config,
@@ -89,7 +89,7 @@ def save_checkpoint(path: Path, model, optimizer, epoch: int, config: Dict) -> N
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
-            "model": model.state_dict(),
+            "model": model_state_dict(model),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
             "config": config,
@@ -100,7 +100,7 @@ def save_checkpoint(path: Path, model, optimizer, epoch: int, config: Dict) -> N
 
 def load_training_state(path: Path, model, optimizer):
     checkpoint = torch.load(path, map_location="cpu")
-    model.load_state_dict(checkpoint["model"])
+    load_model_state(model, checkpoint["model"])
     if "optimizer" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer"])
     return {
@@ -189,13 +189,14 @@ def main() -> None:
 
     config = load_config(args.config)
     set_seed(config["seed"])
-    device = resolve_device(config["device"])
+    device, gpu_ids = resolve_device(config["device"])
     codec = STFTCodec(config, device)
 
     train_loader = build_dataloader(config, "train")
     valid_loader = build_dataloader(config, "valid")
-    model = STFTMaskTSE(**config["model"]).to(device)
+    model = maybe_wrap_model(STFTMaskTSE(**config["model"]), device, gpu_ids)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["train"]["learning_rate"], weight_decay=1e-4)
+    print(f"[device] using {device} gpu_ids={gpu_ids if gpu_ids else 'cpu'}")
 
     output_dir = Path(config["output_dir"])
     checkpoint_dir = output_dir / "checkpoints"

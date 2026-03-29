@@ -14,7 +14,7 @@ from src.fm_tse.data.audio import save_wav
 from src.fm_tse.data.pipeline import build_dataset
 from src.fm_tse.models.waveform_tse import WaveformTSE
 from src.fm_tse.utils.config import load_config
-from src.fm_tse.utils.device import resolve_device
+from src.fm_tse.utils.device import load_model_state, maybe_wrap_model, resolve_device
 from src.fm_tse.utils.metrics import improvement, pesq_score, si_sdr, si_snr, snr
 from src.fm_tse.utils.visualization import save_waveform_panel
 
@@ -28,12 +28,13 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    device = resolve_device(config["device"])
+    device, gpu_ids = resolve_device(config["device"])
 
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    model = WaveformTSE(**checkpoint["config"]["model"]).to(device)
-    model.load_state_dict(checkpoint["model"])
+    model = maybe_wrap_model(WaveformTSE(**checkpoint["config"]["model"]), device, gpu_ids)
+    load_model_state(model, checkpoint["model"])
     model.eval()
+    print(f"[device] using {device} gpu_ids={gpu_ids if gpu_ids else 'cpu'}")
 
     dataset = build_dataset(config, args.split, inference=True)
     batch = dataset[args.index]
